@@ -26,6 +26,7 @@ pub fn LinkedList(comptime T: type) type {
         pub fn create(allocator: std.mem.Allocator) !*Self {
             var self = try allocator.create(Self);
             self.list = try LinkedListUnmanaged(T).create(allocator);
+            errdefer allocator.destroy(self);
             self.allocator = allocator;
             self.size = 0;
             return (self);
@@ -135,6 +136,16 @@ pub fn LinkedList(comptime T: type) type {
             return (result);
         }
 
+        pub fn getCount(self: *Self, elem: T, compare: fn (a: T, b: T) bool) usize {
+            var result: usize = 0;
+            var temp = self.list.maybe_head orelse return (0);
+            while (temp) |node| : (temp = node.next()) {
+                if (compare(elem, node.item) == true)
+                    result += 1;
+            }
+            return (result);
+        }
+
         pub fn push(self: *Self, node: *Node) void {
             self.list.insertFront(node);
             self.size += 1;
@@ -144,6 +155,35 @@ pub fn LinkedList(comptime T: type) type {
             const node = self.list.removeFront() orelse return (null);
             self.size -= 1;
             return (node);
+        }
+
+        pub fn enqueue(self: *Self, node: *Node) void {
+            self.list.insertBack(node);
+            self.size += 1;
+        }
+
+        pub fn dequeue(self: *Self) ?*Node {
+            const node = self.list.removeFront() orelse return (null);
+            self.size -= 1;
+            return (node);
+        }
+
+        pub fn reverse(self: *Self) void {
+            const prev = &self.list.maybe_head;
+            var current: *Node = prev.*.?;
+            while (current.next) |next| {
+                current.next = next.next;
+                next.next = prev.*;
+                prev.* = next;
+            }
+        }
+
+        pub fn rotateLeft(self: *Self, left_rotation: usize) void {
+            return self.list.rotateLeft(left_rotation);
+        }
+
+        pub fn rotateRight(self: *Self, right_rotation: usize) void {
+            return self.list.rotateRight(right_rotation);
         }
     };
 }
@@ -208,9 +248,7 @@ pub fn LinkedListUnmanaged(comptime T: type) type {
         };
 
         pub fn create(allocator: std.mem.Allocator) !*Self {
-            var list: *Self = undefined;
-
-            list = try allocator.create(Self);
+            var list: *Self = try allocator.create(Self);
             list.maybe_head = null;
             list.maybe_tail = null;
             list.size = 0;
@@ -311,6 +349,77 @@ pub fn LinkedListUnmanaged(comptime T: type) type {
             const child = parent.removeChild();
             list.size -= 1;
             return (child);
+        }
+
+        fn sortedMerge(left: ?*Node, right: ?*Node, is_sorted: fn (v1: T, v2: T) bool) ?*Node {
+            var result: ?*Node = null;
+            if (left == null) {
+                return (right);
+            } else if (right == null) {
+                return (left);
+            }
+            if (is_sorted(left.?.item, right.?.item) == true) {
+                result = left;
+                result.?.maybe_next = sortedMerge(left.?.maybe_next, right, is_sorted);
+            } else {
+                result = right;
+                result.?.maybe_next = sortedMerge(left, right.?.maybe_next, is_sorted);
+            }
+        }
+
+        fn findMiddle(maybe_head: ?*Node, start: *?*Node, end: *?*Node) void {
+            if (maybe_head) |head| {
+                var maybe_slow_ptr: ?*Node = maybe_head;
+                var maybe_fast_ptr: ?*Node = head.maybe_next;
+
+                while (maybe_fast_ptr) |fast| {
+                    maybe_fast_ptr = fast.maybe_next orelse null;
+                    if (fast) {
+                        maybe_slow_ptr = maybe_slow_ptr.maybe_next.?;
+                        fast = fast.maybe_next orelse null;
+                    }
+                }
+                start.* = head;
+                end.* = maybe_slow_ptr.maybe_next orelse null;
+                maybe_slow_ptr.maybe_next = 0;
+            }
+        }
+
+        pub fn sort(maybe_head_ptr: *?*Node, is_sorted: fn (v1: T, v2: T) bool) void {
+            if (maybe_head_ptr.*) |head| {
+                var a: ?*Node = null;
+                var b: ?*Node = null;
+                findMiddle(head, &a, &b);
+                sort(&a, is_sorted);
+                sort(&b, is_sorted);
+                maybe_head_ptr.* = sortedMerge();
+            }
+        }
+
+        pub fn rotate(list: *Self, maybe_left: ?usize, maybe_right: ?usize) void {
+            if (maybe_left) |left| {
+                for (0..left) |_| {
+                    if (list.removeFront()) |node| {
+                        node.maybe_next = null;
+                        list.insertBack(node);
+                    } else break;
+                }
+            } else if (maybe_right) |right| {
+                for (0..right) |_| {
+                    if (list.removeFront()) |node| {
+                        node.maybe_next = null;
+                        list.insertBack(node);
+                    } else break;
+                }
+            }
+        }
+
+        fn rotateLeft(list: *Self, left_rotation: usize) void {
+            return (list.rotate(left_rotation, null));
+        }
+
+        fn rotateRight(list: *Self, right_rotation: usize) void {
+            return (list.rotate(null, right_rotation));
         }
     };
 }
