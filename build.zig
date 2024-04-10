@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     b.installArtifact(lib);
+    _ = lib.getEmittedH();
     const lib_unit_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/linked_list/list.zig" },
         .target = target,

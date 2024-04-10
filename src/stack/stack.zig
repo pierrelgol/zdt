@@ -20,6 +20,49 @@ const assert = std.debug.assert;
 const LinkListUnmanaged = @import("../linked_list/list.zig").LinkedListUnmanaged;
 const LinkList = @import("../linked_list/list.zig").LinkedList;
 
+pub fn Stack(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const Data = T;
+        top: StackUnmanaged(T),
+        allocator: std.mem.Allocator,
+
+        pub fn create(allocator: std.mem.Allocator) !Self {
+            var stack = try allocator.create(Self);
+            errdefer allocator.destroy(stack);
+            stack.top = try StackUnmanaged(T).create(allocator);
+            stack.allocator = allocator;
+            return (stack);
+        }
+
+        pub fn destroy(self: *Self) void {
+            const allocator = self.allocator;
+            self.top.destroy(allocator);
+            allocator.destroy(self);
+        }
+
+        pub fn isEmpty(self: *Self) bool {
+            return (self.top.isEmpty());
+        }
+
+        pub fn isFull(self: *Self) bool {
+            return (self.top.isFull());
+        }
+
+        pub fn len(self: *Self) usize {
+            return (self.top.len);
+        }
+
+        pub fn push(self: *Self, item: T) !void {
+            try self.top.push(self.allocator, item);
+        }
+
+        pub fn pop(self: *Self, item: T) !?T {
+            return (self.top.pop(self.allocator, item));
+        }
+    };
+}
+
 pub fn StackUnmanaged(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -62,7 +105,8 @@ pub fn StackUnmanaged(comptime T: type) type {
             return (self.len == limit);
         }
 
-        pub fn push(self: *Self, allocator: std.mem.Allocator, item: T) !void {
+        pub fn push(self: *Self, allocator: std.mem.Allocator, item: T) ?void {
+            if (self.isFull()) return (null);
             self.top.insertFront(try Node.create(allocator, item));
             self.len += 1;
         }
