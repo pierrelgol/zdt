@@ -1,10 +1,14 @@
 const std = @import("std");
-pub const LinkedList = @import("linked_list/list.zig").LinkedList;
-pub const LinkedListUnmanaged = @import("linked_list/list.zig").LinkedListUnmanaged;
-pub const Stack = @import("stack/stack.zig").Stack;
-pub const StackUnmanaged = @import("stack/stack.zig").StackUnmanaged;
+
+const BinaryTree = @import("BinaryTree.zig");
+const Optional = @import("Optional.zig");
+const Result = @import("Result.zig");
+const SlotMap = @import("SlotMap.zig");
+const Stack = @import("Stack.zig");
 
 comptime {
-    std.testing.refAllDeclsRecursive(@import("linked_list/list.zig"));
-    std.testing.refAllDeclsRecursive(@import("stack/stack.zig"));
+    std.testing.refAllDeclsRecursive(BinaryTree);
+    std.testing.refAllDeclsRecursive(Stack);
+    std.testing.refAllDeclsRecursive(Result);
+    std.testing.refAllDeclsRecursive(Optional);
 }
