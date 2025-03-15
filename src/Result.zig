@@ -57,11 +57,11 @@ pub fn failingFoo(x: u32) FooError!u32 {
     return if (x == 4) x else error.wrong;
 }
 
-// test "b" {
-//     const r = foo(4);
+test "b" {
+    const r = foo(4);
 
-//     switch (r) {
-//         .ok => |v| std.debug.print("{d}", .{v}),
-//         .err => |e| std.debug.print("{!}", .{e}),
-//     }
-// }
+    switch (r) {
+        .ok => |v| _ = v,
+        .err => |e| return e,
+    }
+}
