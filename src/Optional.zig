@@ -40,25 +40,3 @@ pub fn Optional(comptime T: type) type {
         }
     };
 }
-
-pub const FooError = error{
-    oops,
-};
-
-pub fn foo(x: u32) Optional(u32) {
-    if (x == 4) {
-        return .{ .some = 4 };
-    } else {
-        return .{ .none = null };
-    }
-}
-
-// test "a" {
-//     const x: u32 = 5;
-//     const opt = foo(x);
-
-//     switch (opt) {
-//         .some => |t| std.debug.print("{d}", .{t}),
-//         .none => |n| std.debug.print("{?}", .{n}),
-//     }
-// }

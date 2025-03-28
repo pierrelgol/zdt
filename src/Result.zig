@@ -40,28 +40,3 @@ pub fn Result(comptime T: type, comptime E: type) type {
         }
     };
 }
-
-pub const FooError = error{
-    wrong,
-};
-
-pub fn foo(x: u32) Result(@TypeOf(x), FooError) {
-    if (x == 4) {
-        return .{ .ok = x };
-    } else {
-        return .{ .err = error.wrong };
-    }
-}
-
-pub fn failingFoo(x: u32) FooError!u32 {
-    return if (x == 4) x else error.wrong;
-}
-
-test "b" {
-    const r = foo(4);
-
-    switch (r) {
-        .ok => |v| _ = v,
-        .err => |e| return e,
-    }
-}

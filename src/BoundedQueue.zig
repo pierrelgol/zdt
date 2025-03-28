@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn StaticQueue(comptime T: type, comptime capacity: usize) type {
+pub fn BoundedQueue(comptime T: type, comptime capacity: usize) type {
     return struct {
         const Self = @This();
         pub const Error = error{ Full, Empty };
@@ -32,13 +32,12 @@ pub fn StaticQueue(comptime T: type, comptime capacity: usize) type {
 }
 
 test "Queue push/pop/peek works" {
-    var queue = StaticQueue(i32, 4).empty;
+    var queue = BoundedQueue(i32, 4).empty;
 
     try queue.push(10);
     try queue.push(20);
     try queue.push(30);
 
-    // In a FIFO, the first element pushed (10) should be at the front.
     try std.testing.expectEqual(10, queue.peek().?);
     try std.testing.expectEqual(10, queue.pop().?);
     try std.testing.expectEqual(20, queue.peek().?);
@@ -51,14 +50,14 @@ test "Queue push/pop/peek works" {
 }
 
 test "Queue pop on empty queue returns null" {
-    var queue = StaticQueue(i32, 1).empty;
+    var queue = BoundedQueue(i32, 1).empty;
 
     try std.testing.expectEqual(null, queue.pop());
     try std.testing.expectEqual(null, queue.peek());
 }
 
 test "Queue deinit cleans up remaining nodes" {
-    var queue = StaticQueue(i32, 2).empty;
+    var queue = BoundedQueue(i32, 2).empty;
 
     try queue.push(42);
     try queue.push(99);
