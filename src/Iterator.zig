@@ -34,5 +34,10 @@ pub fn Iterator(comptime T: type) type {
         pub fn restore(self: *Self) void {
             self.index = self.saved;
         }
+
+        pub fn reset(self: *Self) void {
+            self.index = 0;
+            self.saved = 0;
+        }
     };
 }
