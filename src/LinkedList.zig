@@ -5,6 +5,7 @@ const math = std.math;
 const testing = std.testing;
 const debug = std.debug;
 const assert = std.debug.assert;
+const Allocator = mem.Allocator;
 
 pub fn LinkedList(comptime T: type) type {
     return struct {
@@ -147,9 +148,8 @@ pub fn LinkedList(comptime T: type) type {
             pub fn countChildren(self: *const Node) usize {
                 var count: usize = 0;
                 var current = self.next;
-                while (current) |n| {
+                while (current) |n| : (current = n.next) {
                     count += 1;
-                    current = n.next;
                 }
                 return count;
             }

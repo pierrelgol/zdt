@@ -24,13 +24,13 @@ pub fn Queue(comptime T: type) type {
             }
         }
 
-        pub fn push(self: *Self, item: T) Error!void {
+        pub fn enqueu(self: *Self, item: T) Error!void {
             const node = try self.allocator.create(NodeType);
             node.* = NodeType.init(item);
             self.top.insertBack(node);
         }
 
-        pub fn pop(self: *Self) ?T {
+        pub fn dequeue(self: *Self) ?T {
             if (self.top.removeFront()) |head| {
                 defer self.allocator.destroy(head);
                 return head.item;

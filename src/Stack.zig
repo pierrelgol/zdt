@@ -1,143 +1,202 @@
 const std = @import("std");
+const math = std.math;
 const mem = std.mem;
-const List = @import("LinkedList.zig").LinkedList;
+const Allocator = mem.Allocator;
+const ArrayList = std.ArrayListUnmanaged;
+const assert = std.debug.assert;
 
-pub fn Stack(comptime T: type) type {
+pub fn StackUnmanaged(comptime T: type) type {
+    return StackAlignedUnmanaged(T, null);
+}
+
+pub fn StackAlignedUnmanaged(comptime T: type, comptime alignment: ?u29) type {
+    if (alignment) |a| {
+        if (a == @alignOf(T)) {
+            return StackAlignedUnmanaged(T, null);
+        }
+    }
     return struct {
         const Self = @This();
-        const NodeType = List(T).Node;
-        pub const Error = error{} || mem.Allocator.Error;
 
-        allocator: mem.Allocator,
-        top: List(T),
+        items: Slice = &[_]T{},
+        capacity: usize = 0,
 
-        pub fn init(allocator: mem.Allocator) Self {
+        pub const Slice = if (alignment) |a| ([]align(a) T) else []T;
+
+        pub const empty: Self = .{
+            .items = &.{},
+            .capacity = 0,
+        };
+
+        pub fn initCapacity(gpa: Allocator, capacity: usize) Allocator.Error!Self {
+            var self: Self = .empty;
+            try self.ensureTotalCapacityPrecise(gpa, capacity);
+            return self;
+        }
+
+        pub fn initBuffer(buffer: Slice) Self {
             return .{
-                .allocator = allocator,
-                .top = List(T).init(),
+                .items = buffer[0..0],
+                .capacity = buffer.len,
             };
         }
 
-        pub fn deinit(self: *Self) void {
-            while (self.top.removeFront()) |node| {
-                self.allocator.destroy(node);
-            }
+        pub fn deinit(self: *Self, gpa: Allocator) void {
+            gpa.free(self.allocatedSlice());
+            self.* = undefined;
         }
 
-        pub fn push(self: *Self, item: T) Error!void {
-            const node = try self.allocator.create(NodeType);
-            node.* = NodeType.init(item);
-            self.top.insertFront(node);
+        pub fn push(self: *Self, item: T) Allocator.Error!void {
+            const new_item_ptr = try self.addOne();
+            new_item_ptr.* = item;
         }
 
         pub fn pop(self: *Self) ?T {
-            if (self.top.removeFront()) |head| {
-                defer self.allocator.destroy(head);
-                return head.item;
+            if (self.items.len == 0) return null;
+            const val = self.items[self.items.len - 1];
+            self.items.len -= 1;
+            return val;
+        }
+
+        pub fn top(self: *Self) ?T {
+            if (self.items.len == 0) return null;
+            return self.items[self.items.len - 1];
+        }
+
+        pub fn clone(self: Self, gpa: Allocator) Allocator.Error!Self {
+            var cloned = try Self.initCapacity(gpa, self.capacity);
+            cloned.appendSliceAssumeCapacity(self.items);
+            return cloned;
+        }
+
+        pub fn appendSlice(self: *Self, gpa: Allocator, items: []const T) Allocator.Error!void {
+            try self.ensureUnusedCapacity(gpa, items.len);
+            self.appendSliceAssumeCapacity(items);
+        }
+
+        pub fn appendSliceAssumeCapacity(self: *Self, items: []const T) void {
+            const old_len = self.items.len;
+            const new_len = old_len + items.len;
+            assert(new_len <= self.capacity);
+            self.items.len = new_len;
+            @memcpy(self.items[old_len..][0..items.len], items);
+        }
+
+        pub fn addOne(self: *Self, gpa: Allocator) Allocator.Error!*T {
+            const newlen = self.items.len + 1;
+            try self.ensureTotalCapacityPrecise(gpa, newlen);
+            return self.addOneAssumeCapacity();
+        }
+
+        pub fn addOneAssumeCapacity(self: *Self) *T {
+            assert(self.items.len < self.capacity);
+
+            self.items.len += 1;
+            return &self.items[self.items.len - 1];
+        }
+
+        pub fn ensureTotalCapacityPrecise(self: *Self, gpa: Allocator, new_capacity: usize) Allocator.Error!void {
+            if (@sizeOf(T) == 0) {
+                self.capacity = math.maxInt(usize);
+                return;
+            }
+
+            if (self.capacity >= new_capacity) return;
+
+            const old_memory = self.allocatedSlice();
+            if (gpa.remap(old_memory, new_capacity)) |new_memory| {
+                self.items.ptr = new_memory.ptr;
+                self.capacity = new_memory.len;
             } else {
-                return null;
+                const new_memory = try gpa.alignedAlloc(T, alignment, new_capacity);
+                @memcpy(new_memory[0..self.items.len], self.items);
+                gpa.free(old_memory);
+                self.items.ptr = new_memory.ptr;
+                self.capacity = new_memory.len;
             }
         }
 
-        pub fn peek(self: *const Self) ?T {
-            if (self.top.head) |head| {
-                return head.item;
-            } else {
-                return null;
+        pub fn resize(self: *Self, gpa: Allocator, new_len: usize) Allocator.Error!void {
+            try self.ensureTotalCapacityPrecise(gpa, new_len);
+            self.items.len = new_len;
+        }
+
+        pub fn shrinkAndFree(self: *Self, gpa: Allocator, new_len: usize) void {
+            assert(new_len <= self.items.len);
+
+            if (@sizeOf(T) == 0) {
+                self.items.len = new_len;
+                return;
             }
+
+            const old_memory = self.allocatedSlice();
+            if (gpa.remap(old_memory, new_len)) |new_items| {
+                self.capacity = new_items.len;
+                self.items = new_items;
+                return;
+            }
+
+            const new_memory = gpa.alignedAlloc(T, alignment, new_len) catch |e| switch (e) {
+                error.OutOfMemory => {
+                    self.items.len = new_len;
+                    return;
+                },
+            };
+
+            @memcpy(new_memory, self.items[0..new_len]);
+            gpa.free(old_memory);
+            self.items = new_memory;
+            self.capacity = new_memory.len;
         }
 
-        pub fn len(self: *const Self) usize {
-            return self.top.len;
+        pub fn clearRetainingCapacity(self: *Self) void {
+            self.items.len = 0;
         }
-    };
-}
 
-pub fn StackUnmanaged(comptime T: type) type {
-    return struct {
-        const Self = @This();
-        const NodeType = List(T).Node;
-        pub const Error = error{} || mem.Allocator.Error;
+        pub fn clearAndFree(self: *Self, gpa: Allocator) void {
+            gpa.free(self.allocatedSlice());
+            self.items.len = 0;
+            self.capacity = 0;
+        }
 
-        top: List(T),
+        pub fn shrinkRetainingCapacity(self: *Self, new_len: usize) void {
+            assert(new_len <= self.items.len);
+            self.items.len = new_len;
+        }
 
-        pub fn init() Self {
-            return .{
-                .top = List(T).init(),
+        pub fn toOwnedSlice(self: *Self, gpa: Allocator) Allocator.Error!Slice {
+            const old_memory = self.allocatedSlice();
+            if (gpa.remap(old_memory, self.items.len)) |new_items| {
+                self.* = .empty;
+                return new_items;
+            }
+
+            const new_memory = try gpa.alignedAlloc(T, alignment, self.items.len);
+            @memcpy(new_memory, self.items);
+            self.clearAndFree(gpa);
+            return new_memory;
+        }
+
+        pub fn fromOwnedSlice(slice: Slice) Self {
+            return Self{
+                .items = slice,
+                .capacity = slice.len,
             };
         }
 
-        pub fn deinit(self: *Self, allocator: mem.Allocator) void {
-            while (self.top.removeFront()) |node| {
-                allocator.destroy(node);
+        pub fn allocatedSlice(self: *const Self) []T {
+            return self.items.ptr[0..self.capacity];
+        }
+
+        fn growCapacity(current: usize, minimum: usize) usize {
+            var new = current;
+            while (true) {
+                new +|= new / 2 + init_capacity;
+                if (new >= minimum)
+                    return new;
             }
         }
 
-        pub fn push(self: *Self, allocator: mem.Allocator, item: T) Error!void {
-            const node = try allocator.create(NodeType);
-            node.* = NodeType.init(item);
-            self.top.insertFront(node);
-        }
-
-        pub fn pop(self: *Self, allocator: mem.Allocator) ?T {
-            if (self.top.removeFront()) |head| {
-                defer allocator.destroy(head);
-                return head.item;
-            } else {
-                return null;
-            }
-        }
-
-        pub fn peek(self: *const Self) ?T {
-            if (self.top.head) |head| {
-                return head.item;
-            } else {
-                return null;
-            }
-        }
-
-        pub fn len(self: *const Self) usize {
-            return self.top.len;
-        }
+        const init_capacity = @as(comptime_int, @max(1, std.atomic.cache_line / @sizeOf(T)));
     };
-}
-
-test "Stack push/pop/peek works" {
-    const allocator = std.testing.allocator;
-    var stack = StackUnmanaged(i32).init();
-    defer stack.deinit(allocator);
-
-    try stack.push(allocator, 10);
-    try stack.push(allocator, 20);
-    try stack.push(allocator, 30);
-
-    try std.testing.expectEqual(30, stack.peek().?);
-    try std.testing.expectEqual(30, stack.pop(allocator).?);
-    try std.testing.expectEqual(20, stack.peek().?);
-    try std.testing.expectEqual(20, stack.pop(allocator).?);
-    try std.testing.expectEqual(10, stack.peek().?);
-    try std.testing.expectEqual(10, stack.pop(allocator).?);
-
-    try std.testing.expectEqual(null, stack.peek());
-    try std.testing.expectEqual(null, stack.pop(allocator));
-}
-
-test "Stack pop on empty stack returns null" {
-    const allocator = std.testing.allocator;
-    var stack = StackUnmanaged(i32).init();
-    defer stack.deinit(allocator);
-
-    try std.testing.expectEqual(null, stack.pop(allocator));
-    try std.testing.expectEqual(null, stack.peek());
-}
-
-test "Stack deinit cleans up remaining nodes" {
-    const allocator = std.testing.allocator;
-    var stack = StackUnmanaged(i32).init();
-
-    try stack.push(allocator, 42);
-    try stack.push(allocator, 99);
-    stack.deinit(allocator);
-
-    try std.testing.expectEqual(null, stack.peek());
 }

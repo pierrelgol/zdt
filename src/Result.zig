@@ -12,7 +12,7 @@
 
 const std = @import("std");
 
-pub fn Result(comptime T: type, comptime E: type) type {
+pub fn Result(comptime E: type, comptime T: type) type {
     return union(enum) {
         const Self = @This();
         ok: T,
@@ -39,4 +39,21 @@ pub fn Result(comptime T: type, comptime E: type) type {
             return if (std.meta.activeTag(self) == .ok) self.ok else return null;
         }
     };
+}
+
+pub const Err = error{e};
+
+pub fn foo(bar: u32) Result(Err, u32) {
+    if (bar == 5) {
+        return .{ .ok = 5 };
+    } else {
+        return .{ .err = error.e };
+    }
+}
+
+test Result {
+    switch (foo(5)) {
+        .ok => |v| std.debug.print("{d}", .{v}),
+        .err => |e| std.debug.print("{!}", .{e}),
+    }
 }
